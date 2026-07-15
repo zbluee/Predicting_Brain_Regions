@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Selecting TF-tuned neurons</title>
+<style>
+  :root{
+    --slide:#ffffff; --line:#d9d9d9;
+    --ink:#1a1a1a; --muted:#666666; --hair:#eeeeee;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#e9e7e2;
+    font-family:Georgia,"Times New Roman","Iowan Old Style",serif;color:var(--ink)}
+  .stage{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+  .slide{width:1280px;max-width:100%;aspect-ratio:16/9;background:var(--slide);
+    padding:30px 42px 20px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-bottom:1px solid #cfcbc3;padding-bottom:12px}
+  .title{font-size:27px;font-weight:700;letter-spacing:.2px}
+  .goal{font-size:14px;color:var(--muted);max-width:560px;text-align:right;line-height:1.4;font-style:italic}
+  .grid{flex:1;display:grid;grid-template-columns:1.22fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:26px 34px;margin-top:20px}
+  .panel{padding:2px 2px;position:relative;min-height:0}
+  .p-step{font-size:11px;font-weight:700;letter-spacing:.8px;color:#999;text-transform:uppercase;margin-bottom:2px}
+  .p-title{font-size:15px;font-weight:700;margin:0 0 6px 0}
+  .p-sub{font-size:12px;color:var(--muted);line-height:1.4}
+  .s1{grid-column:1;grid-row:1}
+  .s2{grid-column:2;grid-row:1}
+  .s3{grid-column:3;grid-row:1}
+  .s4{grid-column:1 / span 3;grid-row:2}
+
+  .frag{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease;pointer-events:none}
+  .frag.show{opacity:1;transform:none;pointer-events:auto}
+
+  .heat{display:grid;grid-template-columns:auto repeat(5,1fr);gap:3px;align-items:center;font-size:10px}
+  .cellhdr{font-size:10px;color:var(--muted);text-align:center;font-weight:600}
+  .rowhdr{font-size:9.5px;color:var(--muted);text-align:right;padding-right:4px;white-space:nowrap}
+  .cell{height:16px;border-radius:2px;border:1px solid #e4e4e4;cursor:default}
+  .tfbars{display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:6px}
+  .barwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+  .bar{width:100%;border-radius:4px 4px 0 0;background:#666;border:1px solid #111}
+  .barval{font-size:11px;color:var(--ink);margin-bottom:3px;font-weight:700}
+  .barlbl{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .depthbox{font-size:12.5px;line-height:1.9}
+  .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 4px}
+  .frac .num{border-bottom:1.6px solid var(--ink);padding:0 6px}
+  .frac .den{padding:0 6px}
+  .chip{display:inline-block;padding:0 1px;font-weight:700;font-size:12.5px;color:var(--ink)}
+  .chip.max{text-decoration:underline}
+  .chip.min{text-decoration:underline dotted}
+  .result{font-size:21px;font-weight:700;color:var(--ink);margin-top:10px}
+  .p4wrap{display:grid;grid-template-columns:260px 1fr;gap:18px;height:100%;align-items:center}
+  .controls{display:flex;flex-direction:column;gap:10px}
+  .sliderrow{display:flex;align-items:center;gap:10px}
+  input[type=range]{width:100%;accent-color:#1a1a1a}
+  .readouts{display:flex;gap:26px;margin-top:4px}
+  .stat{text-align:left}
+  .stat .k{font-size:11px;color:var(--muted);font-style:italic}
+  .stat .v{font-size:20px;font-weight:700;color:var(--ink)}
+  .note{font-size:11px;color:var(--muted);margin-top:8px;font-style:italic}
+  .best{font-size:12px;color:var(--ink);font-weight:700;margin-top:4px}
+  svg{display:block}
+
+  .navbar{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+  .dots{display:flex;gap:7px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#cccccc;transition:background .25s,transform .25s}
+  .dot.on{background:var(--ink);transform:scale(1.25)}
+  .hint{font-size:12px;color:var(--muted);font-style:italic}
+  kbd{font-family:inherit;font-style:normal;font-weight:700;color:#333}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="slide">
+    <div class="head">
+      <div class="title">Selecting TF&#8209;tuned neurons</div>
+      <div class="goal frag" data-frag="0">Keep only neurons whose firing actually changes with temporal frequency (TF), then use those for area decoding (PM vs AL).</div>
+    </div>
+
+    <div class="grid">
+      <!-- Step 1 -->
+      <div class="panel s1 frag" data-frag="0">
+        <div class="p-step">STEP 1</div>
+        <div class="p-title">Raw tuning response</div>
+        <div class="p-sub" style="margin-bottom:6px">8 directions &times; 5 TFs = 40 conditions (blank&#8209;subtracted mean).</div>
+        <div class="heat" id="heat"></div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="panel s2 frag" data-frag="1">
+        <div class="p-step">STEP 2</div>
+        <div class="p-title">Collapse to a TF curve</div>
+        <div class="p-sub" style="margin-bottom:2px">Average over the 8 directions &rarr; 5 numbers.</div>
+        <div class="tfbars" id="tfbars"></div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="panel s3 frag" data-frag="2">
+        <div class="p-step">STEP 3</div>
+        <div class="p-title">TF modulation depth</div>
+        <div class="depthbox">
+          depth =
+          <span class="frac">
+            <span class="num">R<sub>max</sub> &minus; R<sub>min</sub></span>
+            <span class="den">R<sub>max</sub></span>
+          </span>
+          =
+          <span class="frac">
+            <span class="num"><span class="chip max">0.50</span> &minus; <span class="chip min">0.05</span></span>
+            <span class="den"><span class="chip max">0.50</span></span>
+          </span>
+        </div>
+        <div class="frag" data-frag="3">
+          <div class="result">depth = 0.45 / 0.50 = 0.90</div>
+          <div class="p-sub" style="margin-top:6px">Weakest TF response is 90% below the strongest &rarr; strongly tuned.<br>Keep if <b>depth &ge; threshold</b>.</div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="panel s4 frag" data-frag="4">
+        <div class="p-step">STEP 4</div>
+        <div class="p4wrap">
+          <div class="controls">
+            <div class="p-title" style="margin-bottom:0">How the threshold is chosen</div>
+            <div class="p-sub">Sweep thresholds 0.00 &rarr; 0.75. At each: keep neurons above it &rarr; classify PM vs AL (logistic regression, session&#8209;grouped CV) &rarr; record balanced accuracy. Pick the highest.</div>
+            <div class="frag" data-frag="5">
+              <div class="sliderrow">
+                <span style="font-size:11px;color:var(--muted)">t</span>
+                <input type="range" id="thr" min="0" max="15" step="1" value="10" />
+              </div>
+              <div class="readouts">
+                <div class="stat"><div class="k">threshold</div><div class="v" id="rThr">0.50</div></div>
+                <div class="stat"><div class="k">bal. acc</div><div class="v" id="rAcc">0.612</div></div>
+              </div>
+              <div class="best" id="bestMsg">&#9733; best threshold = 0.50 (bal. acc 0.612)</div>
+              <!-- <div class="note">Threshold tuned on the same CV score &rarr; optimistic (upper bound).</div> -->
+            </div>
+          </div>
+          <div style="justify-self:stretch">
+            <svg id="chart" viewBox="0 0 640 210" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="navbar">
+      <div class="dots" id="dots"></div>
+      <div class="hint">Press <kbd>&rarr;</kbd> / <kbd>Space</kbd> next &nbsp;&middot;&nbsp; <kbd>&larr;</kbd> back</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Example neuron ----
+const TF_HZ=[1,2,4,8,15], TF_MEAN=[0.10,0.35,0.50,0.20,0.05], DIRS=8;
+function makeMatrix(){
+  const m=Array.from({length:DIRS},()=>new Array(5).fill(0));
+  for(let c=0;c<5;c++){
+    let vals=[],sum=0;
+    for(let r=0;r<DIRS;r++){const jit=(Math.sin(r*1.7+c)*0.5+(r%3-1)*0.4)*TF_MEAN[c]*0.6;const v=Math.max(0,TF_MEAN[c]+jit);vals.push(v);sum+=v;}
+    const adj=TF_MEAN[c]-sum/DIRS;
+    for(let r=0;r<DIRS;r++) m[r][c]=Math.max(0,vals[r]+adj);
+  }
+  return m;
+}
+const MAT=makeMatrix();
+function grayColor(v,vmax){const t=Math.max(0,Math.min(1,v/vmax));const c=Math.round(248-(248-40)*t);return `rgb(${c},${c},${c})`;}
+
+(function renderHeat(){
+  const el=document.getElementById('heat'),vmax=Math.max(...MAT.flat());
+  let h='<div class="cellhdr"></div>';TF_HZ.forEach(f=>h+=`<div class="cellhdr">${f}Hz</div>`);
+  for(let r=0;r<DIRS;r++){h+=`<div class="rowhdr">${r*45}&deg;</div>`;
+    for(let c=0;c<5;c++){const v=MAT[r][c];h+=`<div class="cell" style="background:${grayColor(v,vmax)}" title="dir ${r*45}&deg;, ${TF_HZ[c]}Hz = ${v.toFixed(2)}"></div>`;}}
+  el.innerHTML=h;
+})();
+(function renderBars(){
+  const el=document.getElementById('tfbars'),vmax=Math.max(...TF_MEAN);
+  const imax=TF_MEAN.indexOf(Math.max(...TF_MEAN)),imin=TF_MEAN.indexOf(Math.min(...TF_MEAN));
+  let h='';TF_MEAN.forEach((v,i)=>{const ht=Math.round(18+(v/vmax)*82);
+    let bg='#888';if(i===imax)bg='#111';else if(i===imin)bg='#ffffff';
+    h+=`<div class="barwrap"><div class="barval">${v.toFixed(2)}</div><div class="bar" style="height:${ht}%;background:${bg}"></div><div class="barlbl">${TF_HZ[i]}Hz</div></div>`;});
+  el.innerHTML=h;
+})();
+
+// ---- Step 4 sweep (real data) ----
+const THRS=[0,.05,.10,.15,.20,.25,.30,.35,.40,.45,.50,.55,.60,.65,.70,.75];
+const ACC =[.592,.596,.596,.596,.596,.595,.595,.596,.594,.592,.612,.594,.577,.581,.577,.564];
+const ERR =[.043,.058,.058,.058,.058,.057,.057,.063,.064,.055,.060,.072,.077,.058,.067,.055];
+const BEST=ACC.indexOf(Math.max(...ACC));
+const YMIN=0.50,YMAX=0.68;
+const CW=640,CH=210,ML=48,MR=16,MT=12,MB=32;
+const px=i=>ML+(THRS[i]/0.75)*(CW-ML-MR);
+const py=a=>MT+(1-(Math.max(YMIN,Math.min(YMAX,a))-YMIN)/(YMAX-YMIN))*(CH-MT-MB);
+(function buildChart(){
+  const svg=document.getElementById('chart');let s='';
+  [0.50,0.55,0.60,0.65].forEach(a=>{const y=py(a).toFixed(1);
+    s+=`<line x1="${ML}" y1="${y}" x2="${CW-MR}" y2="${y}" stroke="#eeeeee"/>`;
+    s+=`<text x="${ML-6}" y="${(+y+3)}" font-size="10" fill="#888" text-anchor="end">${a.toFixed(2)}</text>`;});
+  [0,.15,.30,.45,.60,.75].forEach(t=>{const xi=ML+(t/0.75)*(CW-ML-MR);
+    s+=`<text x="${xi.toFixed(1)}" y="${CH-12}" font-size="10" fill="#888" text-anchor="middle">${t.toFixed(2)}</text>`;});
+  s+=`<text x="${(ML+CW-MR)/2}" y="${CH-1}" font-size="10.5" fill="#555" text-anchor="middle">TF depth threshold</text>`;
+  s+=`<text transform="translate(12,${(MT+CH-MB)/2}) rotate(-90)" font-size="10.5" fill="#555" text-anchor="middle">balanced accuracy</text>`;
+  s+=`<line x1="${ML}" y1="${py(0.5)}" x2="${CW-MR}" y2="${py(0.5)}" stroke="#bbbbbb" stroke-dasharray="4 4"/>`;
+  s+=`<text x="${CW-MR}" y="${(py(0.5)-4).toFixed(1)}" font-size="9" fill="#999" text-anchor="end">chance</text>`;
+  // error bars
+  ACC.forEach((a,i)=>{const x=px(i).toFixed(1);const yt=py(a+ERR[i]).toFixed(1),yb=py(a-ERR[i]).toFixed(1);
+    s+=`<line x1="${x}" y1="${yt}" x2="${x}" y2="${yb}" stroke="#bbbbbb" stroke-width="1"/>`;
+    s+=`<line x1="${(+x-3)}" y1="${yt}" x2="${(+x+3)}" y2="${yt}" stroke="#bbbbbb" stroke-width="1"/>`;
+    s+=`<line x1="${(+x-3)}" y1="${yb}" x2="${(+x+3)}" y2="${yb}" stroke="#bbbbbb" stroke-width="1"/>`;});
+  s+=`<polyline points="${ACC.map((a,i)=>`${px(i).toFixed(1)},${py(a).toFixed(1)}`).join(' ')}" fill="none" stroke="#111" stroke-width="2.2"/>`;
+  ACC.forEach((a,i)=>s+=`<circle cx="${px(i).toFixed(1)}" cy="${py(a).toFixed(1)}" r="2.6" fill="#111"/>`);
+  s+=`<circle cx="${px(BEST).toFixed(1)}" cy="${py(ACC[BEST]).toFixed(1)}" r="6.5" fill="none" stroke="#111" stroke-width="2"/>`;
+  s+=`<text x="${px(BEST).toFixed(1)}" y="${(py(ACC[BEST])-11).toFixed(1)}" font-size="11" fill="#111" text-anchor="middle" font-weight="700">&#9733;</text>`;
+  s+=`<line id="cursor" x1="${px(BEST)}" y1="${MT}" x2="${px(BEST)}" y2="${CH-MB}" stroke="#111" stroke-width="1.2" stroke-dasharray="3 3"/>`;
+  s+=`<circle id="cursorDot" cx="${px(BEST)}" cy="${py(ACC[BEST])}" r="4.5" fill="#fff" stroke="#111" stroke-width="2"/>`;
+  svg.innerHTML=s;
+})();
+function updateSlider(i){
+  document.getElementById('rThr').textContent=THRS[i].toFixed(2);
+  document.getElementById('rAcc').textContent=ACC[i].toFixed(3);
+  const cur=document.getElementById('cursor'),dot=document.getElementById('cursorDot');
+  cur.setAttribute('x1',px(i));cur.setAttribute('x2',px(i));
+  dot.setAttribute('cx',px(i));dot.setAttribute('cy',py(ACC[i]));
+}
+document.getElementById('thr').addEventListener('input',e=>updateSlider(+e.target.value));
+document.getElementById('bestMsg').innerHTML=`&#9733; best threshold = ${THRS[BEST].toFixed(2)} (bal. acc ${ACC[BEST].toFixed(3)})`;
+updateSlider(BEST);
+
+// ---- Fragment navigation ----
+const frags=[...document.querySelectorAll('.frag')].sort((a,b)=>(+a.dataset.frag)-(+b.dataset.frag));
+const MAXF=Math.max(...frags.map(f=>+f.dataset.frag));
+let cur=0;
+const dotsEl=document.getElementById('dots');
+for(let i=0;i<=MAXF;i++){const d=document.createElement('div');d.className='dot';dotsEl.appendChild(d);}
+const dots=[...dotsEl.children];
+function render(){
+  frags.forEach(f=>f.classList.toggle('show',(+f.dataset.frag)<=cur));
+  dots.forEach((d,i)=>d.classList.toggle('on',i<=cur));
+}
+function next(){cur=Math.min(MAXF,cur+1);render();}
+function prev(){cur=Math.max(0,cur-1);render();}
+window.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown',' ','Spacebar','PageDown','Enter'].includes(e.key)){e.preventDefault();next();}
+  else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(e.key)){e.preventDefault();prev();}
+  else if(e.key==='Home'){cur=0;render();}
+  else if(e.key==='End'){cur=MAXF;render();}
+});
+document.querySelector('.slide').addEventListener('click',e=>{if(e.target.id!=='thr')next();});
+render();
+</script>
+</body>
+</html>
