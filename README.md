@@ -60,12 +60,8 @@ Modest accuracy; few sessions limit CV folds; the tuning threshold is chosen on 
 score (optimistic); depth ignores the circular structure of orientation/direction; and this is
 single-neuron (not simultaneous population) decoding, limited to two areas / one Cre line.
 
-## Presentation slides (standalone, black-and-white, click-through)
-Open in a browser; navigate with `→` / `Space` (`←` to go back):
+## File
 - `tf_tuned_selection_slide.html` — depth-based TF-tuned selection + accuracy-vs-threshold sweep.
-- `tf_tuned_anova_slide.html` — the depth **AND** ANOVA method + depth-vs-−log10(p) scatter.
-  (Run the export cell after Section 9 to generate `anova_data.js` for the real cloud.)
-- `conclusion_slide.html` — the two questions with answers + biological interpretation.
 
 ## Run
 Designed for Google Colab. Run cells top-to-bottom; the first cell installs/loads AllenSDK.
